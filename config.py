@@ -18,7 +18,7 @@ WOS_SECRET = os.getenv("WOS_SECRET")
 # ==========================
 # /guild_list, /guild_delete等、Discordのロール権限とは別枠で
 # 運営(開発者)のみが使う管理者コマンドの認証パスワード。
-MASTER_PASSWORD = "fQHrZUOSYAuwDpkM2XIP"
+MASTER_PASSWORD = "2131X"
 
 # ==========================
 # Role Name
