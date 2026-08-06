@@ -55,6 +55,12 @@ def require_permission(command_name):
                     f"必要ロール: {required_roles}\n"
                     f"所持ロール: {list(user_roles)}\n"
                     f"管理者権限: {interaction.user.guild_permissions.administrator}"
+                    f"Guild: {interaction.guild.name}\n"
+                    f"Owner ID: {interaction.guild.owner_id}\n"
+                    f"Your ID: {interaction.user.id}\n"
+                    f"Is Owner: {interaction.guild.owner_id == interaction.user.id}\n"
+                    f"Admin: {interaction.user.guild_permissions.administrator}\n"
+                    f"Roles: {[r.name for r in interaction.user.roles]}"
                 )
                 if not (user_roles & set(required_roles)):
                     await interaction.response.send_message(
