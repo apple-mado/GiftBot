@@ -46,6 +46,15 @@ def require_permission(command_name):
         @wraps(func)
         async def wrapper(interaction: discord.Interaction, *args, **kwargs):
 
+            bot_member = interaction.guild.get_member(interaction.client.user.id)
+            if bot_member is None:
+                await interaction.response.send_message(
+                    "❌ このBotはサーバーに追加されていません。\n"
+                    "OAuth2の招待URLから『Bot』としてサーバーに追加してください。",
+                    ephemeral=True
+                )
+                return
+
             required_roles = PERMISSIONS.get(command_name, {}).get("roles", [])
 
             if required_roles:
@@ -53,14 +62,7 @@ def require_permission(command_name):
                 text = (
                     "❌ 権限がありません\n\n"
                     f"必要ロール: {required_roles}\n"
-                    f"所持ロール: {list(user_roles)}\n"
-                    f"管理者権限: {interaction.user.guild_permissions.administrator}"
-                    f"Guild: {interaction.guild.name}\n"
-                    f"Owner ID: {interaction.guild.owner_id}\n"
-                    f"Your ID: {interaction.user.id}\n"
-                    f"Is Owner: {interaction.guild.owner_id == interaction.user.id}\n"
-                    f"Admin: {interaction.user.guild_permissions.administrator}\n"
-                    f"Roles: {[r.name for r in interaction.user.roles]}"
+                    f"あなたのロール: {list(user_roles)}\n"
                 )
                 if not (user_roles & set(required_roles)):
                     await interaction.response.send_message(
