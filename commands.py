@@ -50,10 +50,15 @@ def require_permission(command_name):
 
             if required_roles:
                 user_roles = {role.name for role in interaction.user.roles}
-
+                text = (
+                    "❌ 権限がありません\n\n"
+                    f"必要ロール: {required_roles}\n"
+                    f"所持ロール: {list(user_roles)}\n"
+                    f"管理者権限: {interaction.user.guild_permissions.administrator}"
+                )
                 if not (user_roles & set(required_roles)):
                     await interaction.response.send_message(
-                        "❌権限がありません",
+                        text,
                         ephemeral=True
                     )
                     return
