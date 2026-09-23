@@ -3,6 +3,7 @@
 import discord
 import re
 import asyncio
+import time
 from discord import app_commands
 from functools import wraps
 from datetime import datetime, timezone, timedelta
@@ -36,6 +37,9 @@ from config import (
 )
 
 JST = timezone(timedelta(hours=UTC_OFFSET))
+
+# メッセージ編集の回数制限を避けるため、進捗書き込みは5秒に1回までにする。
+PROGRESS_WRITE_INTERVAL_SEC = 5
 
 
 # ==========================
@@ -107,6 +111,15 @@ async def _check_permission(interaction, command_name):
     return False
 
 
+async def _followup_error(interaction, text):
+    """deferで表示された応答を消してから、本人だけに見えるエラーを送る。"""
+    try:
+        await interaction.delete_original_response()
+    except discord.HTTPException:
+        pass
+    await interaction.followup.send(text, ephemeral=True)
+
+
 async def start_giftcode_flow(interaction, code, bot):
     """
     /giftcode の実処理本体。スラッシュコマンド(giftcode_command)、
@@ -144,13 +157,17 @@ async def start_giftcode_flow(interaction, code, bot):
         )
         return
 
+    # Discordの最初の応答は3秒以内に必要なので、ここで先にdeferする。
+    # メッセージ編集の回数制限で通信が遅れても、応答期限を超えないようにする。
+    await interaction.response.defer(thinking=True)
+
     # history_dataコメントの生存確認(削除されていればfatalを消費して復旧)
     ensure_result = await manager.ensure_history_comment(bot)
 
     if not ensure_result["status"]:
-        await interaction.response.send_message(
-            f"❌{ensure_result['message']}",
-            ephemeral=True
+        await _followup_error(
+            interaction,
+            f"❌{ensure_result['message']}"
         )
         return
 
@@ -158,17 +175,14 @@ async def start_giftcode_flow(interaction, code, bot):
     allowed, remain, limit_message = await manager.check_code_limit(bot, code)
 
     if not allowed:
-        await interaction.response.send_message(
-            limit_message,
-            ephemeral=True
-        )
+        await _followup_error(interaction, limit_message)
         return
 
     read_result = await manager.read_players_comment(bot)
     PLAYERS = read_result["data"] if read_result["status"] else []
 
     if not PLAYERS:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌登録プレイヤーがありません"
         )
         return
@@ -181,7 +195,7 @@ async def start_giftcode_flow(interaction, code, bot):
     skipped_count = len(PLAYERS) - len(target_players)
 
     if not target_players:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌対象プレイヤーがいません（全員スキップ対象です）"
         )
         return
@@ -208,6 +222,7 @@ async def start_giftcode_flow(interaction, code, bot):
                     player["exchange_status"] = "未交換"
 
             start_date_text = datetime.now(JST).strftime("%Y/%m/%d %H:%M:%S")
+            last_write = {"at": 0.0, "status": None}
 
             async def on_progress(
                 counts, elapsed, done, total, log_entries,
@@ -221,6 +236,15 @@ async def start_giftcode_flow(interaction, code, bot):
                     status = "待機中"
                 else:
                     status = "処理中"
+
+                now = time.monotonic()
+                if (
+                    not finished
+                    and not rate_limited_abort
+                    and status == last_write["status"]
+                    and now - last_write["at"] < PROGRESS_WRITE_INTERVAL_SEC
+                ):
+                    return
 
                 dashboard = {
                     "code": code,
@@ -239,6 +263,8 @@ async def start_giftcode_flow(interaction, code, bot):
                     dashboard,
                     view=LastResultView(code=code, log_entries=log_entries)
                 )
+                last_write["at"] = time.monotonic()
+                last_write["status"] = status
 
             counts, elapsed, log_entries = await run_exchange(
                 code,
@@ -251,7 +277,7 @@ async def start_giftcode_flow(interaction, code, bot):
             if success_count > 0:
                 await manager.record_history_success(bot, code, success_count)
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         (
             f"対象:{len(target_players)}人\n"
             f"{skip_text}"
